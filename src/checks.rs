@@ -1,3 +1,4 @@
+use crate::comment;
 use crate::common::*;
 
 mod duplicated_key;
@@ -47,16 +48,38 @@ pub fn available_check_names() -> Vec<String> {
 
 pub fn run(lines: Vec<LineEntry>, skip_checks: &[&str]) -> Vec<Warning> {
     let mut checks = checklist();
+
+    // Skip checks with the --skip argument (globally)
     checks.retain(|c| !skip_checks.contains(&c.name()));
+
+    // Skip checks with comments
+    let mut disabled_checks: Vec<&str> = Vec::new();
 
     let mut warnings: Vec<Warning> = Vec::new();
 
     for line in &lines {
         let is_comment = line.is_comment();
+        if is_comment {
+            let comment = match comment::parse(&line.raw_string) {
+                Some(c) => c,
+                None => continue,
+            };
+            if comment.is_disabled() {
+                disabled_checks.extend(comment.checks);
+            } else {
+                disabled_checks.retain(|&s| !comment.checks.contains(&s));
+            }
+        }
+
         for ch in &mut checks {
             if is_comment && ch.skip_comments() {
                 continue;
             }
+
+            if disabled_checks.contains(&ch.name()) {
+                continue;
+            }
+
             if let Some(warning) = ch.run(line) {
                 warnings.push(warning);
             }
